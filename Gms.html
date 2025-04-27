@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>GTA HTML5</title>
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            font-family: 'Arial', sans-serif;
+        }
+        #ui {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: white;
+            text-shadow: 2px 2px 4px #000;
+            font-size: 18px;
+        }
+        #map {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 150px;
+            height: 150px;
+            background: rgba(0,0,0,0.5);
+            border: 2px solid white;
+        }
+        #weapon-selector {
+            position: absolute;
+            bottom: 80px;
+            right: 20px;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <div id="health">HEALTH: 100%</div>
+        <div id="money">$: 5000</div>
+        <div id="wanted">WANTED: ★☆☆☆☆</div>
+    </div>
+    <div id="map"></div>
+    <div id="weapon-selector">
+        <button onclick="switchWeapon('pistol')">Pistol</button>
+        <button onclick="switchWeapon('ak47')">AK-47</button>
+        <button onclick="switchWeapon('shotgun')">Shotgun</button>
+    </div>
+
+    <!-- 3D Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/FirstPersonControls.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/howler/2.2.3/howler.min.js"></script>
+    
+    <script>
+        // ========== GAME INIT ==========
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x6699ff);
+        scene.fog = new THREE.Fog(0x6699ff, 10, 100);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 2, 5);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        // ========== LIGHTING ==========
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(10, 20, 10);
+        directionalLight.castShadow = true;
+        scene.add(directionalLight);
+
+        // ========== PLAYER & CONTROLS ==========
+        const controls = new THREE.FirstPersonControls(camera, renderer.domElement);
+        controls.movementSpeed = 5;
+        controls.lookSpeed = 0.1;
+        controls.lookVertical = true;
+
+        // ========== GTA WORLD ==========
+        function createCity() {
+            // Roads
+            const roadGeometry = new THREE.PlaneGeometry(100, 10);
+            const roadMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
+            const road = new THREE.Mesh(roadGeometry, roadMaterial);
+            road.rotation.x = -Math.PI / 2;
+            road.position.y = 0;
+            road.receiveShadow = true;
+            scene.add(road);
+
+            // Buildings
+            const buildingColors = [0x8B4513, 0x4682B4, 0xA0522D, 0x708090];
+            for(let i = 0; i < 20; i++) {
+                const width = Math.random() * 5 + 3;
+                const height = Math.random() * 10 + 5;
+                const depth = Math.random() * 5 + 3;
+                
+                const building = new THREE.Mesh(
+                    new THREE.BoxGeometry(width, height, depth),
+                    new THREE.MeshStandardMaterial({ 
+                        color: buildingColors[Math.floor(Math.random() * buildingColors.length)],
+                        metalness: 0.3,
+                        roughness: 0.8
+                    })
+                );
+                building.position.x = (Math.random() - 0.5) * 80;
+                building.position.z = (Math.random() - 0.5) * 80;
+                building.position.y = height/2;
+                building.castShadow = true;
+                building.receiveShadow = true;
+                scene.add(building);
+            }
+
+            // Cars
+            const carGeometry = new THREE.BoxGeometry(2, 1, 4);
+            for(let i = 0; i < 10; i++) {
+                const car = new THREE.Mesh(
+                    carGeometry,
+                    new THREE.MeshStandardMaterial({ 
+                        color: Math.random() * 0xffffff,
+                        metalness: 0.7,
+                        roughness: 0.2
+                    })
+                );
+                car.position.x = (Math.random() - 0.5) * 90;
+                car.position.z = (Math.random() - 0.5) * 90;
+                car.position.y = 0.5;
+                car.rotation.y = Math.random() * Math.PI * 2;
+                scene.add(car);
+            }
+        }
+
+        // ========== WEAPON SYSTEM ==========
+        const weapons = {
+            current: 'pistol',
+            list: {
+                pistol: { damage: 10, ammo: 12, sound: new Howl({ src: ['https://assets.codepen.io/21542/pistol-shot.mp3'] }) },
+                ak47: { damage: 25, ammo: 30, sound: new Howl({ src: ['https://assets.codepen.io/21542/ak47-shot.mp3'] }) },
+                shotgun: { damage: 40, ammo: 6, sound: new Howl({ src: ['https://assets.codepen.io/21542/shotgun-shot.mp3'] }) }
+            },
+            fire: function() {
+                if(this.list[this.current].ammo > 0) {
+                    this.list[this.current].ammo--;
+                    this.list[this.current].sound.play();
+                    
+                    // Shooting logic
+                    const raycaster = new THREE.Raycaster();
+                    raycaster.setFromCamera(new THREE.Vector2(), camera);
+                    const intersects = raycaster.intersectObjects(scene.children);
+                    
+                    if(intersects.length > 0) {
+                        // Hit effect
+                        console.log("Hit!", intersects[0].object);
+                    }
+                }
+            }
+        };
+
+        function switchWeapon(weapon) {
+            weapons.current = weapon;
+            document.getElementById('weapon-selector').style.color = 'yellow';
+            setTimeout(() => {
+                document.getElementById('weapon-selector').style.color = 'white';
+            }, 200);
+        }
+
+        // ========== GAME LOOP ==========
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update(0.016); // Delta time
+            renderer.render(scene, camera);
+        }
+
+        // ========== INIT GAME ==========
+        createCity();
+        animate();
+
+        // Event Listeners
+        document.addEventListener('click', () => {
+            weapons.fire();
+        });
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
